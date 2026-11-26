@@ -7,8 +7,10 @@ import {
 import { DataSource, EntityManager } from 'typeorm';
 import {
   isConstraintViolation,
+  ORDER_POINT_FK,
   POINT_NAME_KEY,
   POINT_ZONE_FK,
+  ROUND_ZONE_FK,
   ZONE_NAME_KEY,
 } from '../common/database-errors';
 import {
@@ -35,6 +37,10 @@ const POINT_NOT_FOUND = 'Punto no encontrado.';
 const ZONE_NAME_TAKEN = 'Ya existe una zona con ese nombre.';
 const POINT_NAME_TAKEN = 'Ya existe un punto con ese nombre.';
 const ZONE_HAS_POINTS = 'La zona tiene puntos; muévelos o elimínalos antes.';
+export const ZONE_HAS_ROUNDS =
+  'La zona tiene rondas de despacho; desactívala en vez de eliminarla.';
+export const POINT_HAS_ORDERS =
+  'El punto tiene pedidos; desactívalo en vez de eliminarlo.';
 
 @Injectable()
 export class DeliveryService {
@@ -128,6 +134,8 @@ export class DeliveryService {
     } catch (error) {
       if (isConstraintViolation(error, '23503', POINT_ZONE_FK))
         throw new ConflictException(ZONE_HAS_POINTS);
+      if (isConstraintViolation(error, '23503', ROUND_ZONE_FK))
+        throw new ConflictException(ZONE_HAS_ROUNDS);
       throw error;
     }
   }
@@ -196,11 +204,18 @@ export class DeliveryService {
     }
   }
 
+  /** La FK RESTRICT de los pedidos protege el historial: se desactiva en su lugar. */
   async removePoint(id: string): Promise<void> {
-    const result = await this.source
-      .getRepository(DeliveryPoint)
-      .delete({ id });
-    if (!result.affected) throw new NotFoundException(POINT_NOT_FOUND);
+    try {
+      const result = await this.source
+        .getRepository(DeliveryPoint)
+        .delete({ id });
+      if (!result.affected) throw new NotFoundException(POINT_NOT_FOUND);
+    } catch (error) {
+      if (isConstraintViolation(error, '23503', ORDER_POINT_FK))
+        throw new ConflictException(POINT_HAS_ORDERS);
+      throw error;
+    }
   }
 
   /** Bloqueo compartido: una baja de la zona espera o falla por la FK. */

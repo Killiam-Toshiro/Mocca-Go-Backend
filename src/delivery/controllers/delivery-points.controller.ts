@@ -68,9 +68,17 @@ export class DeliveryPointsController {
   @Delete(':id')
   @HttpCode(204)
   @POINT_ID
-  @ApiOperation({ summary: 'Eliminar un punto (solo admin)' })
+  @ApiOperation({
+    summary: 'Eliminar un punto sin pedidos (solo admin)',
+    description:
+      'Si algún pedido ya usó el punto responde `409`: desactívalo con `PATCH /delivery-points/:id`.',
+  })
   @ApiNoContentResponse({ description: 'Punto eliminado.' })
-  @ApiErrors(400, [404, 'Punto no encontrado.'])
+  @ApiErrors(
+    400,
+    [404, 'Punto no encontrado.'],
+    [409, 'El punto tiene pedidos; desactívalo en vez de eliminarlo.'],
+  )
   async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     await this.delivery.removePoint(id);
   }

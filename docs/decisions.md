@@ -190,3 +190,15 @@ Decisiones del incremento 019 (Encuesta de satisfacción y métricas; aprobadas 
 - D-115: una venta es un pedido con pago `aprobado` (incluye `no_entregado`; la cancelación reembolsa y deja de contar). El costo variable usa el costo guardado en cada línea del pedido, no el actual del producto.
 - D-116: los tiempos salen de los eventos del pedido; «a tiempo» mide el reparto (`en_camino` → `entregado`) contra 15 minutos, y se reportan también cocina y espera.
 - D-117: los días se cuentan en hora de Colombia (UTC−5 fijo). Las respuestas de `/metrics` y `/surveys` no se guardan en caché. Eliminar un cliente con encuestas responde `409`.
+
+Decisiones del incremento 020 (Usuarios: búsqueda y edición de clientes; aprobadas por el usuario el 2026-11-11):
+
+- D-118: `GET /users` filtra en el servidor con `search` (usuario, nombre, teléfono y correo del cliente; con 3 o más dígitos también por los dígitos del teléfono) y `role` (varios separados por coma); sin parámetros la respuesta no cambia.
+- D-119: el admin edita de un cliente solo `fullName` (2 a 100) y `phone`, que se guardan en su ficha; el correo no se edita y su `username` es interno (`400`). El admin conserva el restablecimiento de la contraseña del cliente, porque no existe «olvidé mi contraseña».
+- D-120: un admin no cambia su propio rol (`409`) y cambiar el rol de otro usuario revoca todas sus sesiones (sus canales en vivo se cierran con el siguiente latido).
+- D-121: el `409` de borrar un usuario habla de «historial asociado» (movimientos, pedidos, rondas o encuestas). «Desactivar» usuarios queda para un incremento posterior.
+- D-122: sin extensiones de PostgreSQL (`unaccent`, `pg_trgm`): la búsqueda no distingue mayúsculas pero sí tildes. `mustChangePassword` queda fuera.
+
+Decisión del incremento 021 (corrección pedida por el frontend, 2026-11-12):
+
+- D-123: eliminar un punto con pedidos o una zona con rondas de despacho responde `409` (no `500`) con los textos «El punto tiene pedidos; desactívalo en vez de eliminarlo.» y «La zona tiene rondas de despacho; desactívala en vez de eliminarla.»; se cumple así la RN-44 de la spec 015.

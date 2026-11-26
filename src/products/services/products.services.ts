@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { escapeLike } from '../../common/like';
 import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import {
   COMPONENT_PRODUCT_FK,
@@ -47,11 +48,6 @@ type CatalogChanges = Partial<
     | 'soldOut'
   >
 >;
-
-/** Escapa los comodines de LIKE para que `%`, `_` y `\` se busquen como texto. */
-export function escapeLike(text: string): string {
-  return text.replace(/[\\%_]/g, '\\$&');
-}
 
 export function isDuplicateSku(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;

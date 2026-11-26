@@ -1,4 +1,5 @@
 import { plainToInstance } from 'class-transformer';
+import { escapeLike } from '../../src/common/like';
 import { validateSync } from 'class-validator';
 import { randomUUID } from 'node:crypto';
 import { DataSource, QueryFailedError } from 'typeorm';
@@ -14,7 +15,6 @@ import {
   UpdateProductDto,
 } from '../../src/products/DTOs/products.dto';
 import {
-  escapeLike,
   isDuplicateSku,
   ProductsService,
 } from '../../src/products/services/products.services';

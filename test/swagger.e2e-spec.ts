@@ -496,7 +496,13 @@ describe('Documentación OpenAPI (Swagger)', () => {
     expect(Object.keys(params('GET /api/v1/users')).sort()).toEqual([
       'query:limit',
       'query:page',
+      'query:role',
+      'query:search',
     ]);
+    expect(params('GET /api/v1/users')).toMatchObject({
+      'query:search': { maxLength: 100 },
+      'query:role': { example: 'admin,operador,repartidor' },
+    });
     for (const key of [
       'PATCH /api/v1/products/{id}/status',
       'PATCH /api/v1/products/{id}/sold-out',

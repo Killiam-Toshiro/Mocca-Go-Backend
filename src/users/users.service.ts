@@ -26,6 +26,7 @@ import {
   ROUND_COURIER_FK,
   SURVEY_CUSTOMER_FK,
 } from '../common/database-errors';
+import { escapeLike } from '../common/like';
 import { Customer } from '../customers/entities/customer.entity';
 import { StockMovement } from '../movements/entities/stock-movement.entity';
 import { hashPassword } from '../seed/password';
@@ -36,12 +37,14 @@ import { UserView, userView } from './user.view';
 export const USER_NOT_FOUND = 'Usuario no encontrado.';
 export const CLIENT_ROLE = 'Un cliente no cambia de rol.';
 const USERNAME_TAKEN = 'El username ya existe.';
-const USER_HAS_MOVEMENTS =
-  'El usuario tiene movimientos; no se puede eliminar.';
+const USER_HAS_HISTORY =
+  'El usuario tiene historial asociado; no se puede eliminar.';
+export const OWN_ROLE = 'No puedes cambiar tu propio rol.';
+const STAFF_NAME = 'El nombre del personal admite de 2 a 80 caracteres.';
 const COURIER_CONTACT =
   'Un repartidor necesita teléfono y nombre de contacto (phone y fullName).';
-const CUSTOMER_CONTACT =
-  'Los datos de contacto de un cliente los edita él mismo en /customers/me.';
+const CUSTOMER_USERNAME =
+  'El username de un cliente es interno y no se edita; el cliente entra con su correo.';
 
 function isDuplicateUsername(error: unknown): boolean {
   return isConstraintViolation(error, '23505', 'users_username_key');
@@ -135,20 +138,50 @@ export class UsersService {
     const page = Number(input.page ?? '1');
     const limit = Number(input.limit ?? '20');
     return this.adminTransaction(actor, 'read', async (manager) => {
-      const [users, total] = await manager.getRepository(User).findAndCount({
-        select: {
-          id: true,
-          username: true,
-          role: true,
-          phone: true,
-          fullName: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-        order: { username: 'ASC', id: 'ASC' },
-        skip: (page - 1) * limit,
-        take: limit,
-      });
+      const query = manager
+        .getRepository(User)
+        .createQueryBuilder('user')
+        .leftJoin(Customer, 'customer', 'customer.userId = user.id')
+        .select([
+          'user.id',
+          'user.username',
+          'user.role',
+          'user.phone',
+          'user.fullName',
+          'user.createdAt',
+          'user.updatedAt',
+        ]);
+      if (input.role?.length)
+        query.andWhere('user.role IN (:...roles)', { roles: input.role });
+      const search = input.search?.trim();
+      if (search) {
+        const conditions = [
+          'user.username',
+          'user.fullName',
+          'user.phone',
+          'customer.email',
+          'customer.fullName',
+          'customer.phone',
+        ].map((column) => `${column} ILIKE :pattern ESCAPE '\\'`);
+        const parameters: Record<string, string> = {
+          pattern: `%${escapeLike(search)}%`,
+        };
+        const digits = search.replace(/\D/g, '');
+        if (digits.length >= 3) {
+          for (const column of ['user.phone', 'customer.phone'])
+            conditions.push(
+              `regexp_replace(${column}, '\\D', '', 'g') LIKE :digits`,
+            );
+          parameters.digits = `%${digits}%`;
+        }
+        query.andWhere(`(${conditions.join(' OR ')})`, parameters);
+      }
+      const [users, total] = await query
+        .orderBy('user.username', 'ASC')
+        .addOrderBy('user.id', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
       const customers = new Map(
         (
           await manager.getRepository(Customer).findBy({
@@ -177,9 +210,11 @@ export class UsersService {
   }
 
   /**
-   * Edita username y/o contraseña (RN-09). Solo escribe lo que cambia, así que
-   * repetir el mismo username no modifica `updatedAt`. Una contraseña nueva
-   * revoca las demás sesiones del usuario editado y reinicia su bloqueo.
+   * Edita username, contraseña, nombre y teléfono (RN-09). Solo escribe lo que
+   * cambia, así que repetir un valor no modifica `updatedAt`. Una contraseña
+   * nueva revoca las demás sesiones del usuario editado y reinicia su bloqueo.
+   * En un cliente, nombre y teléfono se escriben en su ficha; su username es
+   * interno y no se edita.
    */
   async update(
     actor: Identity,
@@ -213,9 +248,25 @@ export class UsersService {
             | 'fullName'
           >
         > = {};
-        if (input.phone !== undefined || input.fullName !== undefined) {
-          if (user.role === 'cliente')
-            throw new BadRequestException(CUSTOMER_CONTACT);
+        const contact: Partial<Pick<Customer, 'phone' | 'fullName'>> = {};
+        if (user.role === 'cliente' && input.username !== undefined)
+          throw new BadRequestException(CUSTOMER_USERNAME);
+        if (input.fullName !== undefined) {
+          if (user.role !== 'cliente' && input.fullName.length > 80)
+            throw new BadRequestException(STAFF_NAME);
+        }
+        if (user.role === 'cliente') {
+          const customer = await manager
+            .getRepository(Customer)
+            .findOneByOrFail({ userId: id });
+          if (input.phone !== undefined && input.phone !== customer.phone)
+            contact.phone = input.phone;
+          if (
+            input.fullName !== undefined &&
+            input.fullName !== customer.fullName
+          )
+            contact.fullName = input.fullName;
+        } else {
           if (input.phone !== undefined && input.phone !== user.phone)
             changes.phone = input.phone;
           if (input.fullName !== undefined && input.fullName !== user.fullName)
@@ -234,9 +285,15 @@ export class UsersService {
               { revokedAt: new Date() },
             );
         }
-        if (Object.keys(changes).length === 0)
+        if (Object.keys(contact).length > 0)
+          await manager.getRepository(Customer).update({ userId: id }, contact);
+        if (Object.keys(changes).length > 0)
+          await repository.update({ id }, changes);
+        if (
+          Object.keys(changes).length === 0 &&
+          Object.keys(contact).length === 0
+        )
           return this.viewOf(manager, user);
-        await repository.update({ id }, changes);
         return this.viewOf(manager, await repository.findOneByOrFail({ id }));
       });
     } catch (error) {
@@ -264,7 +321,7 @@ export class UsersService {
         if (user.id === actor.id)
           throw new ConflictException('No puedes eliminar tu propio usuario.');
         if (await manager.getRepository(StockMovement).existsBy({ userId: id }))
-          throw new ConflictException(USER_HAS_MOVEMENTS);
+          throw new ConflictException(USER_HAS_HISTORY);
         await manager.getRepository(User).delete({ id });
       });
     } catch (error) {
@@ -275,7 +332,7 @@ export class UsersService {
         isConstraintViolation(error, '23503', ROUND_COURIER_FK) ||
         isConstraintViolation(error, '23503', SURVEY_CUSTOMER_FK)
       )
-        throw new ConflictException(USER_HAS_MOVEMENTS);
+        throw new ConflictException(USER_HAS_HISTORY);
       throw error;
     }
   }
@@ -293,7 +350,11 @@ export class UsersService {
         throw new ConflictException(
           'No se puede degradar al último administrador.',
         );
+      if (user.id === actor.id) throw new ConflictException(OWN_ROLE);
       await repository.update({ id }, { role });
+      await manager
+        .getRepository(Session)
+        .update({ userId: id, revokedAt: IsNull() }, { revokedAt: new Date() });
       return userView(await repository.findOneByOrFail({ id }));
     });
   }
