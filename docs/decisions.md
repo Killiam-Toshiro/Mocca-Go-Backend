@@ -202,3 +202,7 @@ Decisiones del incremento 020 (Usuarios: búsqueda y edición de clientes; aprob
 Decisión del incremento 021 (corrección pedida por el frontend, 2026-11-12):
 
 - D-123: eliminar un punto con pedidos o una zona con rondas de despacho responde `409` (no `500`) con los textos «El punto tiene pedidos; desactívalo en vez de eliminarlo.» y «La zona tiene rondas de despacho; desactívala en vez de eliminarla.»; se cumple así la RN-44 de la spec 015.
+
+Decisión del incremento 022 (seed en producción, 2026-11-26):
+
+- D-124: el seed de producción corre dentro del contenedor de Railway, en el pre-deploy tras las migraciones y solo con `RUN_SEED=true`; el workflow manual `seed.yml` pone la bandera, redespliega y la deja en `false` siempre. Se descartan `railway ssh` (exige llave de cuenta), `railway run` desde el runner (no alcanza la red privada), el proxy público (obligaría a debilitar TLS) y un endpoint HTTP (no puede crear al primer admin).
