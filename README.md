@@ -85,6 +85,7 @@ Los cambios de alcance se registran; una tarea pendiente no se presenta como com
 | 19     | Encuesta de satisfacción y métricas del negocio                     | Cerrado; ver el [overview](docs/commits/019.md)               |
 | 20     | Usuarios: búsqueda, filtro por rol y edición de clientes            | Cerrado; ver el [overview](docs/commits/020.md)               |
 | 21     | Corrección: eliminar zonas y puntos con historial da `409`          | En revisión; ver el [overview](docs/commits/021.md)           |
+| 22     | Seed de producción bajo demanda (workflow manual y pre-deploy)      | En revisión; ver el [overview](docs/commits/022.md)           |
 
 El despliegue ya está verificado. Quedan revisar el informe final cuando se comparta y confirmar la entrega en Intu. Swagger complementa el informe, pero no lo sustituye.
 
@@ -464,12 +465,14 @@ Los scripts habilitan las VM de módulos de Node para cargar las dependencias ES
 
 La API se despliega en Railway con PostgreSQL gestionado; el diseño completo está en [la especificación 010](specs/010-deployment/spec.md) y la configuración del panel en [su plan](specs/010-deployment/plan.md).
 
-| Paso                  | Qué ocurre                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------------- |
-| Push o PR a otra rama | Solo `verify` (formato, lint, tipos, build y pruebas con cobertura ≥80%)                       |
-| Push a `main`         | `verify` → `deploy` (`railway up`) → smoke test. Si `verify` falla, no se despliega            |
-| En Railway            | Build `npm run build`, migraciones como pre-deploy, arranque `npm run start:prod`, healthcheck |
-| Seed                  | Manual y una sola vez, con contraseñas de producción propias; el pipeline nunca lo ejecuta     |
+| Paso                  | Qué ocurre                                                                                                                                                                  |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Push o PR a otra rama | Solo `verify` (formato, lint, tipos, build y pruebas con cobertura ≥80%)                                                                                                    |
+| Push a `main`         | `verify` → `deploy` (`railway up`) → smoke test. Si `verify` falla, no se despliega                                                                                         |
+| En Railway            | Build `npm run build`, migraciones como pre-deploy (`node dist/seed/predeploy.js`, que además siembra solo con `RUN_SEED=true`), arranque `npm run start:prod`, healthcheck |
+| Seed                  | Bajo demanda: workflow manual **Seed de producción** (botón «Run workflow»); el pipeline nunca lo ejecuta                                                                   |
+
+**Seed bajo demanda (022).** El seed no corre en los despliegues normales. Cuando lo necesites, en GitHub abre _Actions → Seed de producción → Run workflow_: pone `RUN_SEED=true` en el servicio, redespliega (el pre-deploy `node dist/seed/predeploy.js` migra y siembra) y deja `RUN_SEED=false` al terminar, aunque algo falle. El seed es idempotente: no cambia contraseñas ni lo que el admin editó. Si el project token no permite cambiar variables o redesplegar, el respaldo es poner y quitar `RUN_SEED` a mano en el panel de Railway. Ver [spec 022](specs/022-seed-produccion/spec.md).
 
 En GitHub se requieren el secreto `RAILWAY_TOKEN` (project token del entorno `production`) y las variables `RAILWAY_SERVICE` y `API_URL`. Ningún secreto de la API ni de la base vive en el repositorio.
 

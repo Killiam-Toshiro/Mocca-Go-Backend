@@ -12,15 +12,15 @@ Registrar spec, plan, tareas y las decisiones D-51 a D-58 en `docs/decisions.md`
 2. Crear un proyecto vacío y añadir **PostgreSQL** (servicio `Postgres`).
 3. Crear un servicio vacío **`api`** (sin conectar el repositorio, para que no haya autodeploy, D-52) y configurar en _Settings_:
 
-   | Ajuste             | Valor                               |
-   | ------------------ | ----------------------------------- |
-   | Builder            | Railpack (por defecto)              |
-   | Build command      | `npm run build`                     |
-   | Pre-deploy command | `node dist/database/migrate.js run` |
-   | Start command      | `npm run start:prod`                |
-   | Healthcheck path   | `/api/v1/health`                    |
-   | Restart policy     | On failure                          |
-   | Réplicas           | 1                                   |
+   | Ajuste             | Valor                                                                                |
+   | ------------------ | ------------------------------------------------------------------------------------ |
+   | Builder            | Railpack (por defecto)                                                               |
+   | Build command      | `npm run build`                                                                      |
+   | Pre-deploy command | `node dist/seed/predeploy.js` (desde 022; antes `node dist/database/migrate.js run`) |
+   | Start command      | `npm run start:prod`                                                                 |
+   | Healthcheck path   | `/api/v1/health`                                                                     |
+   | Restart policy     | On failure                                                                           |
+   | Réplicas           | 1                                                                                    |
 
    Railpack instala las dependencias con `npm ci` y toma la versión de Node de `engines` (`>=24.15.0 <25`) y `.nvmrc`.
 
