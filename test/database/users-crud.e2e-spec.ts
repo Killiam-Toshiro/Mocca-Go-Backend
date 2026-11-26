@@ -454,7 +454,7 @@ describe('GET, PATCH y DELETE /users/:id: HTTP con PostgreSQL real', () => {
       await movementBy(operator);
       const response = await remove(operator.id).expect(409);
       expect(message(response)).toBe(
-        'El usuario tiene movimientos; no se puede eliminar.',
+        'El usuario tiene historial asociado; no se puede eliminar.',
       );
       expect(JSON.stringify(response.body)).not.toMatch(
         /23503|fkey|DELETE FROM/,
@@ -469,7 +469,7 @@ describe('GET, PATCH y DELETE /users/:id: HTTP con PostgreSQL real', () => {
       jest.spyOn(Repository.prototype, 'existsBy').mockResolvedValueOnce(false);
       const response = await remove(operator.id).expect(409);
       expect(message(response)).toBe(
-        'El usuario tiene movimientos; no se puede eliminar.',
+        'El usuario tiene historial asociado; no se puede eliminar.',
       );
       expect(JSON.stringify(response.body)).not.toMatch(
         /23503|fkey|DELETE FROM/,

@@ -158,6 +158,11 @@ describe('Contratos y proyección de usuarios', () => {
       {},
       { page: '1', limit: '1' },
       { page: '10000', limit: '100' },
+      { search: 'ana', role: 'admin' },
+      { search: '  300 123  ', role: 'admin,operador,repartidor' },
+      { search: '', role: 'cliente,cliente' },
+      { search: 'a'.repeat(100) },
+      { role: ['admin', 'operador'] },
     ])
       expect(
         validateSync(plainToInstance(ListUsersDto, query), options),
@@ -173,7 +178,12 @@ describe('Contratos y proyección de usuarios', () => {
       { limit: '1.0' },
       { limit: ' 1' },
       { limit: '0' },
-      { role: 'admin' },
+      { role: 'root' },
+      { role: '' },
+      { role: 'admin,' },
+      { search: 'a'.repeat(101) },
+      { search: 'a\u0000b' },
+      { search: 5 },
     ])
       expect(
         validateSync(plainToInstance(ListUsersDto, query), options).length,

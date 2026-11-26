@@ -1,12 +1,25 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsIn, IsString, Length, Matches, ValidateIf } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
 import {
   PHONE_MESSAGE,
   phoneToE164,
   trimmed,
 } from '../customers/customers.dto';
-import { STAFF_ROLES, StaffRole } from './entities/user.entity';
+import {
+  STAFF_ROLES,
+  StaffRole,
+  USER_ROLES,
+  UserRole,
+} from './entities/user.entity';
 import { PaginationQueryDto } from '../common/pagination';
 
 /** Username canónico; idéntico al CHECK users_username_format. */
@@ -102,7 +115,7 @@ export class UpdateUserDto {
   @ApiPropertyOptional({
     example: '+57 300 123 4567',
     description:
-      'Teléfono del personal (no aplica a clientes); se guarda en E.164.',
+      'Teléfono de contacto (personal o cliente); se guarda en E.164.',
   })
   @Transform(phoneToE164)
   @ValidateIf((_object, value) => value !== undefined)
@@ -111,13 +124,14 @@ export class UpdateUserDto {
 
   @ApiPropertyOptional({
     minLength: 2,
-    maxLength: 80,
-    description: 'Nombre del personal (no aplica a clientes).',
+    maxLength: 100,
+    description:
+      'Nombre de contacto: 2 a 80 caracteres para el personal y 2 a 100 para un cliente.',
   })
   @Transform(trimmed)
   @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @Length(2, 80)
+  @Length(2, 100)
   fullName?: string;
 }
 
@@ -131,4 +145,34 @@ export class ChangeRoleDto {
   role!: StaffRole;
 }
 
-export class ListUsersDto extends PaginationQueryDto {}
+// PostgreSQL no admite NUL en texto: se rechaza con 400, no con 500.
+// eslint-disable-next-line no-control-regex -- el NUL es justamente lo que se rechaza
+const NO_NUL = /^[^\u0000]*$/;
+const splitRoles = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string' ? [...new Set(value.split(','))] : value;
+
+export class ListUsersDto extends PaginationQueryDto {
+  @ApiPropertyOptional({
+    maxLength: 100,
+    example: '300 123',
+    description:
+      'Texto parcial, sin distinguir mayúsculas, en el usuario, el nombre, el teléfono y el correo del cliente. Con 3 o más dígitos también busca en los dígitos del teléfono. Si queda vacío tras recortarlo se ignora.',
+  })
+  @Transform(trimmed)
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @Matches(NO_NUL)
+  search?: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    example: 'admin,operador,repartidor',
+    description:
+      'Uno o varios roles separados por coma (`admin`, `operador`, `repartidor`, `cliente`); los repetidos cuentan una vez.',
+  })
+  @Transform(splitRoles)
+  @IsOptional()
+  @IsIn(USER_ROLES, { each: true })
+  role?: UserRole[];
+}

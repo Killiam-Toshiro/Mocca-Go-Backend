@@ -225,7 +225,10 @@ describe('Administración y roles: HTTP con PostgreSQL real', () => {
     '?limit=01',
     '?limit=',
     '?limit=%201',
-    '?role=admin',
+    '?role=root',
+    '?role=admin,',
+    '?role=',
+    '?search=a%00b',
   ])('rechaza query %s', async (query) => {
     await list(query).expect(400).expect('Cache-Control', 'no-store');
   });
@@ -310,7 +313,7 @@ describe('Administración y roles: HTTP con PostgreSQL real', () => {
     ).toBe(0);
   });
 
-  it('promoción y degradación cambian permisos con el mismo JWT, sin cambiar la contraseña', async () => {
+  it('promoción y degradación cambian permisos y cierran las sesiones del usuario, sin cambiar la contraseña', async () => {
     const stored = await context.source
       .getRepository(User)
       .createQueryBuilder('user')
@@ -319,18 +322,30 @@ describe('Administración y roles: HTTP con PostgreSQL real', () => {
       .getOneOrFail();
     const promoted = await change(operator.id, 'admin').expect(200);
     assertSafe(promoted.body as SafeUser);
-    await list('', operatorToken).expect(200);
+    await list('', operatorToken).expect(401);
+    const adminAgain = await access(
+      await context.source
+        .getRepository(User)
+        .findOneByOrFail({ id: operator.id }),
+    );
+    await list('', adminAgain).expect(200);
     const adminUser = await create(
       { username: 'created_by_promoted', password, role: 'operador' },
-      operatorToken,
+      adminAgain,
     ).expect(201);
     expect((adminUser.body as SafeUser).username).toBe('created_by_promoted');
     await change(operator.id, 'operador').expect(200);
-    await list('', operatorToken).expect(403);
-    await change(operator.id, 'admin', operatorToken).expect(403);
+    await list('', adminAgain).expect(401);
+    const operatorAgain = await access(
+      await context.source
+        .getRepository(User)
+        .findOneByOrFail({ id: operator.id }),
+    );
+    await list('', operatorAgain).expect(403);
+    await change(operator.id, 'admin', operatorAgain).expect(403);
     await request(server)
       .get('/api/v1/auth/me')
-      .set('Authorization', `Bearer ${operatorToken}`)
+      .set('Authorization', `Bearer ${operatorAgain}`)
       .expect(200)
       .expect({ id: operator.id, username: 'operador', role: 'operador' });
     const after = await context.source
@@ -388,37 +403,34 @@ describe('Administración y roles: HTTP con PostgreSQL real', () => {
       role: 'admin',
     }).expect(201);
     const id = (other.body as SafeUser).id;
-    await change(admin.id, 'operador').expect(200);
-    // Ahora el segundo es el último admin: ya no se puede degradar.
-    const secondToken = await access(
-      await context.source.getRepository(User).findOneByOrFail({ id }),
+    // Otro admin sí puede degradarse; con dos admins nadie cambia su propio rol.
+    await change(id, 'operador').expect(200);
+    const last = await change(admin.id, 'operador').expect(409);
+    expect((last.body as { message: string }).message).toContain(
+      'último administrador',
     );
-    await change(id, 'operador', secondToken).expect(409);
-    expect(
-      (await context.source.getRepository(User).findOneByOrFail({ id })).role,
-    ).toBe('admin');
     expect(
       await context.source.getRepository(User).countBy({ role: 'admin' }),
     ).toBe(1);
   });
 
-  it('permite degradación propia si existe otro admin y el JWT pierde administración', async () => {
+  it('un admin no cambia su propio rol aunque exista otro admin', async () => {
     await fixture('other_admin', 'admin');
-    await change(admin.id, 'operador').expect(200);
-    await list().expect(403);
-    await create({ username: 'blocked_user', password, role: 'admin' }).expect(
-      403,
+    const own = await change(admin.id, 'operador').expect(409);
+    expect((own.body as { message: string }).message).toBe(
+      'No puedes cambiar tu propio rol.',
     );
+    await list().expect(200);
   });
 
-  it('dos admins que se degradan simultáneamente nunca eliminan al último admin', async () => {
+  it('dos admins que se degradan entre sí nunca eliminan al último admin', async () => {
     const other = await fixture('other_admin', 'admin');
     const otherToken = await access(other);
     const results = await Promise.all([
-      change(admin.id, 'operador'),
-      change(other.id, 'operador', otherToken),
+      change(other.id, 'operador'),
+      change(admin.id, 'operador', otherToken),
     ]);
-    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
     expect(
       await context.source.getRepository(User).countBy({ role: 'admin' }),
     ).toBe(1);

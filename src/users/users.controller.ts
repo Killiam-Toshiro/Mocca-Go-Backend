@@ -62,7 +62,11 @@ export class UsersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar usuarios paginados (solo admin)' })
+  @ApiOperation({
+    summary: 'Listar usuarios paginados (solo admin)',
+    description:
+      'Con `search` (usuario, nombre, teléfono y correo) y `role` (uno o varios separados por coma) el filtro lo hace el servidor; sin ellos devuelve todos, ordenados por `username`.',
+  })
   @ApiOkResponse({ type: UserPageResponse })
   @ApiErrors(400)
   list(@Req() request: AuthRequest, @Query() query: ListUsersDto) {
@@ -84,10 +88,12 @@ export class UsersController {
   @Patch(':id')
   @USER_ID
   @ApiOperation({
-    summary: 'Editar username o contraseña (solo admin)',
+    summary: 'Editar username, contraseña, nombre o teléfono (solo admin)',
     description:
       'No cambia el rol. Una contraseña nueva revoca las demás sesiones del ' +
-      'usuario editado y reinicia su bloqueo de intentos.',
+      'usuario editado y reinicia su bloqueo de intentos. En un cliente, nombre ' +
+      'y teléfono se guardan en su ficha (2 a 100 caracteres de nombre; 2 a 80 ' +
+      'en el personal) y el username no se edita.',
   })
   @ApiOkResponse({ type: UserResponse })
   @ApiErrors(400, NOT_FOUND, [409, 'El username ya existe.'])
@@ -103,13 +109,13 @@ export class UsersController {
   @HttpCode(204)
   @USER_ID
   @ApiOperation({
-    summary: 'Eliminar usuario sin movimientos (solo admin)',
+    summary: 'Eliminar usuario sin historial (solo admin)',
     description: 'Sus sesiones dejan de ser válidas de inmediato.',
   })
   @ApiNoContentResponse({ description: 'Usuario eliminado.' })
   @ApiErrors(400, NOT_FOUND, [
     409,
-    'Es el último admin, es tu propio usuario o tiene movimientos.',
+    'Es el último admin, es tu propio usuario o tiene historial (movimientos, pedidos, rondas o encuestas).',
   ])
   remove(
     @Req() request: AuthRequest,
@@ -122,12 +128,13 @@ export class UsersController {
   @USER_ID
   @ApiOperation({
     summary: 'Cambiar rol (solo admin)',
-    description: 'Los nuevos permisos aplican desde la siguiente petición.',
+    description:
+      'Revoca todas las sesiones del usuario: debe iniciar sesión de nuevo y sus canales en vivo se cierran. Un admin no cambia su propio rol.',
   })
   @ApiOkResponse({ type: UserResponse })
   @ApiErrors(400, NOT_FOUND, [
     409,
-    'No se puede degradar al último admin registrado, o el usuario es un cliente.',
+    'No se puede degradar al último admin, es tu propio rol o el usuario es un cliente.',
   ])
   changeRole(
     @Req() request: AuthRequest,

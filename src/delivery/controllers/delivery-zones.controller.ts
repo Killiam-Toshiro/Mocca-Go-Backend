@@ -110,9 +110,16 @@ export class DeliveryZonesController {
   @Roles('admin')
   @ZONE_ID
   @ApiBearerAuth(BEARER_SCHEME)
-  @ApiOperation({ summary: 'Eliminar una zona sin puntos (solo admin)' })
+  @ApiOperation({
+    summary: 'Eliminar una zona sin puntos ni rondas (solo admin)',
+    description:
+      'Responde `409` si la zona aún tiene puntos o si alguna ronda de despacho la usó (en ese caso desactívala con `PATCH /delivery-zones/:id`).',
+  })
   @ApiNoContentResponse({ description: 'Zona eliminada.' })
-  @ApiErrors(400, 401, 403, NOT_FOUND, [409, 'La zona tiene puntos.'])
+  @ApiErrors(400, 401, 403, NOT_FOUND, [
+    409,
+    'La zona tiene puntos, o tiene rondas de despacho; desactívala en vez de eliminarla.',
+  ])
   async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     await this.delivery.removeZone(id);
   }

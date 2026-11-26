@@ -86,11 +86,15 @@ describe('Teléfono y nombre del personal (CA-22)', () => {
     await harness.send('patch', `/users/${id}`, { fullName: 'x' }).expect(400);
   });
 
-  it('un cliente no edita su contacto desde /users y GET /users devuelve el del personal', async () => {
+  it('el admin edita el contacto de un cliente (CA-07 del 020) y GET /users devuelve el del personal', async () => {
     const ana: Customer = await harness.customer('ana');
-    await harness
-      .send('patch', `/users/${ana.id}`, { phone: '300 123 4567' })
-      .expect(400);
+    const edited = await harness
+      .send('patch', `/users/${ana.id}`, { phone: '300 765 4321' })
+      .expect(200);
+    expect(edited.body).toMatchObject({
+      phone: '+573007654321',
+      role: 'cliente',
+    });
     const listed = await harness.get('/users?limit=100', 'admin').expect(200);
     const courier = (
       listed.body as { data: (UserBody & { id: string })[] }

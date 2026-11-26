@@ -109,7 +109,7 @@ export class CatalogHarness {
     return this.hashed;
   }
 
-  private async tokenFor(userId: string): Promise<string> {
+  async tokenFor(userId: string): Promise<string> {
     const session = await this.context.source
       .getRepository(Session)
       .save({ userId, expiresAt: new Date(Date.now() + 900_000) });

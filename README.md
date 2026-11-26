@@ -82,7 +82,9 @@ Los cambios de alcance se registran; una tarea pendiente no se presenta como com
 | 16     | Pedidos con pago de demostración y descuento de saldo               | Cerrado; ver el [overview](docs/commits/016.md)               |
 | 17     | Cocina (cola y transiciones) y avisos en tiempo real (SSE)          | Cerrado; ver el [overview](docs/commits/017.md)               |
 | 18     | Despacho: rondas del repartidor, entrega y «no entregado»           | Cerrado; ver el [overview](docs/commits/018.md)               |
-| 19     | Encuesta de satisfacción y métricas del negocio                     | En revisión; ver el [overview](docs/commits/019.md)           |
+| 19     | Encuesta de satisfacción y métricas del negocio                     | Cerrado; ver el [overview](docs/commits/019.md)               |
+| 20     | Usuarios: búsqueda, filtro por rol y edición de clientes            | Cerrado; ver el [overview](docs/commits/020.md)               |
+| 21     | Corrección: eliminar zonas y puntos con historial da `409`          | En revisión; ver el [overview](docs/commits/021.md)           |
 
 El despliegue ya está verificado. Quedan revisar el informe final cuando se comparta y confirmar la entrega en Intu. Swagger complementa el informe, pero no lo sustituye.
 
@@ -257,9 +259,9 @@ Después de iniciar sesión como admin, usa el Bearer JWT obtenido. Un operador,
 | Ruta relativa a `/api/v1` | Parámetros                                                               | Respuesta                                   |
 | ------------------------- | ------------------------------------------------------------------------ | ------------------------------------------- |
 | `POST /users`             | JSON `username`, `password`, `role` (`admin`, `operador` o `repartidor`) | `201`: usuario seguro                       |
-| `GET /users`              | `page` opcional 1–10000, `limit` opcional 1–100                          | `200`: `{data,page,limit,total,totalPages}` |
+| `GET /users`              | `page`, `limit`, `search` (≤100) y `role` (uno o varios, con coma)       | `200`: `{data,page,limit,total,totalPages}` |
 | `GET /users/:id`          | UUID v4                                                                  | `200`: usuario seguro                       |
-| `PATCH /users/:id`        | UUID v4, JSON `username` y/o `password`                                  | `200`: usuario seguro actualizado           |
+| `PATCH /users/:id`        | UUID v4, JSON `username`, `password`, `phone` y/o `fullName`             | `200`: usuario seguro actualizado           |
 | `DELETE /users/:id`       | UUID v4                                                                  | `204` sin cuerpo                            |
 | `PATCH /users/:id/role`   | UUID v4, JSON `{role}`                                                   | `200`: usuario seguro actualizado           |
 
@@ -269,7 +271,7 @@ Username debe ser canónico: 3–64 caracteres, minúsculas ASCII, dígitos y `.
 
 Paginación predeterminada: página 1, límite 20. Query debe contener dígitos sin ceros iniciales; no se aceptan signos, espacios, exponentes, fracciones ni valores repetidos/arrays. Orden por username e ID; una página fuera del total devuelve `data:[]`.
 
-Se rechaza con `409` degradar al último admin registrado. El rol idéntico es idempotente; cambiarlo conserva contraseña e historial. La misma sesión refleja sus nuevos permisos sin volver a iniciar sesión. Transacciones con bloqueo asesor serializan cambios administrativos y revalidan sesión/rol al salir de la espera, protegiendo contra cambios concurrentes. Todas las respuestas de administración, incluidos errores, llevan `Cache-Control: no-store`.
+Se rechaza con `409` degradar al último admin registrado. El rol idéntico es idempotente; cambiarlo conserva contraseña e historial. Cambiar el rol de otro usuario **revoca todas sus sesiones** (debe iniciar sesión de nuevo y sus canales en vivo se cierran en el siguiente latido, máximo 25 s); un admin no cambia su propio rol (`409`). Transacciones con bloqueo asesor serializan cambios administrativos y revalidan sesión/rol al salir de la espera, protegiendo contra cambios concurrentes. Todas las respuestas de administración, incluidos errores, llevan `Cache-Control: no-store`.
 
 Ejemplo PowerShell después del recorrido de autenticación anterior (`$base` y `$headers` siguen definidos; utiliza una sesión vigente que no hayas cerrado):
 
@@ -280,9 +282,11 @@ Invoke-RestMethod "$base/users?page=1&limit=20" -Headers $headers
 Invoke-RestMethod -Method Patch "$base/users/$($newUser.id)/role" -Headers $headers -ContentType 'application/json' -Body (@{ role = 'admin' } | ConvertTo-Json)
 ```
 
-`PATCH /users/:id` acepta `username` y/o `password` con las mismas reglas que la creación; el body vacío, `null` o campos extra como `role` reciben `400`, y un username ocupado `409`. Repetir el mismo username no modifica `updatedAt`. Cambiar la contraseña revoca todas las sesiones del usuario editado salvo la que hace la petición y reinicia su bloqueo de intentos; renombrar no invalida sesiones.
+**Búsqueda y filtro (`GET /users`).** `search` recorta el texto (vacío se ignora), busca sin distinguir mayúsculas pero sí tildes, con `%`, `_` y `\` como texto literal, en el username, nombre y teléfono del usuario y en el correo, nombre y teléfono del cliente; con 3 o más dígitos también compara los dígitos del teléfono (`300 123` encuentra `+57300123…`). `role` acepta uno o varios valores separados por coma (`role=admin,operador,repartidor` es el «personal» en una sola consulta; los repetidos cuentan una vez y un valor inválido da `400`). `total` y `totalPages` siguen al filtro; sin parámetros la respuesta es la de siempre.
 
-`DELETE /users/:id` solo elimina usuarios sin movimientos, porque el historial conserva a su responsable. Responde `409` si el destino es el último admin, si es tu propio usuario o si tiene movimientos (cada caso con su mensaje); para retirar a un usuario con historial, degrádalo a `operador`. Al eliminarlo, sus sesiones desaparecen y su JWT recibe `401` de inmediato.
+`PATCH /users/:id` acepta `username`, `password`, `phone` y `fullName` con las mismas reglas que la creación (nombre de 2 a 80 caracteres para el personal); el body vacío, `null` o campos extra como `role` reciben `400`, y un username ocupado `409`. Repetir el mismo username no modifica `updatedAt`. Cambiar la contraseña revoca todas las sesiones del usuario editado salvo la que hace la petición y reinicia su bloqueo de intentos; renombrar no invalida sesiones. **Sobre un cliente**, `phone` y `fullName` (2 a 100 caracteres) se guardan en su ficha, el correo no se acepta, su `username` es interno (`400`) y `password` sigue sirviendo para restablecerle la contraseña.
+
+`DELETE /users/:id` solo elimina usuarios sin historial (movimientos, pedidos, rondas o encuestas), porque conserva a su responsable. Responde `409` si el destino es el último admin, si es tu propio usuario o si tiene historial asociado (cada caso con su mensaje); para retirar a un usuario con historial, degrádalo a `operador`. Al eliminarlo, sus sesiones desaparecen y su JWT recibe `401` de inmediato.
 
 ```powershell
 Invoke-RestMethod "$base/users/$($newUser.id)" -Headers $headers
